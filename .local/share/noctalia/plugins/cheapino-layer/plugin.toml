@@ -1,0 +1,10 @@
+id = "glebinho/cheapino-layer"
+name = "Cheapino Layer"
+version = "1.0.0"
+author = "glebinho"
+description = "Displays the active Cheapino keyboard layer"
+plugin_api = 3
+
+[[widget]]
+id = "layer"
+entry = "widget.luau"
