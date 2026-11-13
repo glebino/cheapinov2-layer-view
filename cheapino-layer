@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""basic Cheapino V2 BASE / LAYER 1 indicator."""
+
+import argparse
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+from evdev import InputDevice, ecodes, list_devices
+
+STATE = Path(os.environ.get(
+    "CHEAPINO_LAYER_STATE",
+    f"/run/user/{os.getuid()}/cheapino-layer.state"
+))
+
+# Keys that indicate TO(1) first layer
+L1 = {
+    "KEY_2", "KEY_3", "KEY_4", "KEY_5", "KEY_6",
+    "KEY_7", "KEY_8", "KEY_9", "KEY_0",
+    "KEY_LEFT", "KEY_DOWN", "KEY_UP", "KEY_RIGHT",
+    "KEY_MINUS", "KEY_EQUAL", "KEY_LEFTBRACE",
+    "KEY_RIGHTBRACE", "KEY_APOSTROPHE", "KEY_SYSRQ",
+    "KEY_BACKSLASH"
+}
+
+# Keys that indicate TO(0)
+BASE = {
+    "KEY_Y", "KEY_U", "KEY_I", "KEY_O", "KEY_P",
+    "KEY_H", "KEY_J", "KEY_K", "KEY_L", "KEY_N",
+    "KEY_M", "KEY_COMMA", "KEY_DOT", "KEY_SLASH",
+    "KEY_T", "KEY_R", "KEY_E", "KEY_W", "KEY_G",
+    "KEY_F", "KEY_D", "KEY_S", "KEY_V", "KEY_C", "KEY_X"
+}
+
+
+def save(state):
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    
+    fd, tmp = tempfile.mkstemp(
+        dir=STATE.parent,
+        prefix="cheapino-"
+    )
+
+    with os.fdopen(fd, "w") as f:
+        f.write(state + "\n")
+    
+    os.replace(tmp, STATE)
+
+
+def status():
+    try:
+        value = STATE.read_text().strip()
+        return value if value in ("BASE", "LAYER 1") else "BASE"
+    except OSError:
+        return "BASE"
+
+
+def device():
+    for path in list_devices():
+        try:
+            d = InputDevice(path)
+            name = (d.name or "").lower()
+
+            if "cheapino2 keyboard" in name:
+                return d
+
+            d.close()
+        except OSError:
+            continue
+
+    raise RuntimeError("Cheapino2 Keyboard interface not found")
+
+def watch():
+    d = device()
+    print(f"Watching {d.path}: {d.name}", file=sys.stderr)
+
+    state = status()
+    print(f"Initial state: {state}", file=sys.stderr)
+
+    try:
+        for event in d.read_loop():
+            if event.type != ecodes.EV_KEY or event.value != 1:
+                continue
+
+            key = ecodes.KEY.get(event.code, f"UNKNOWN_{event.code}")
+            print(f"KEY: {key}", file=sys.stderr)
+
+            if key in L1:
+                new_state = "LAYER 1"
+            elif key in BASE:
+                new_state = "BASE"
+            else:
+                continue
+
+            if new_state != state:
+                state = new_state
+                save(state)
+                print(f"STATE: {state}", flush=True)
+    finally:
+        d.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--watch", action="store_true")
+    args = parser.parse_args()
+    
+    if args.watch:
+        try:
+            watch()
+        except (OSError, RuntimeError) as error:
+            sys.exit(f"cheapino-layer: {error}")
+    else:
+        print(status())
