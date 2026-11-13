@@ -1,0 +1,12 @@
+[Unit]
+Description=Cheapino V2 layer indicator
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/cheapino-layer --watch
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
